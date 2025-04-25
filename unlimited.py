@@ -1605,6 +1605,9 @@ async def attack_input(update: Update, context: CallbackContext):
         parse_mode='Markdown'
     )
 
+    # Track all attack threads for this target
+    attack_threads = []
+
     def _run_ssh_attack(vps, threads_for_vps, attack_num, context):
         """Synchronous SSH attack function to be run in thread"""
         ip_vps, username, password = vps
@@ -1619,7 +1622,8 @@ async def attack_input(update: Update, context: CallbackContext):
             'vps_ip': ip_vps,
             'target': f"{ip}:{port}",
             'threads': threads_for_vps,
-            'completed': False  # Track completion status
+            'completed': False,
+            'message_id': start_message.message_id
         }
         
         ssh = None
@@ -1692,7 +1696,8 @@ async def attack_input(update: Update, context: CallbackContext):
                              f"💻 *VPS Used:* {total_vps}\n\n"
                              f"👑 *Bot Owner:* {current_display_name}\n\n"
                              f"🔥 *ATTACK COMPLETED!*",
-                        parse_mode='Markdown'
+                        parse_mode='Markdown',
+                        reply_to_message_id=start_message.message_id
                     ),
                     context.bot.application.event_loop
                 )
@@ -1704,7 +1709,6 @@ async def attack_input(update: Update, context: CallbackContext):
 
     try:
         # Start a thread for each VPS
-        threads = []
         for i, vps in enumerate(VPS_LIST[:ACTIVE_VPS_COUNT]):
             threads_for_vps = threads_per_vps + (1 if i < remaining_threads else 0)
             if threads_for_vps > 0:
@@ -1714,7 +1718,13 @@ async def attack_input(update: Update, context: CallbackContext):
                     daemon=True
                 )
                 t.start()
-                threads.append(t)
+                attack_threads.append(t)
+        
+        # Store threads for tracking
+        running_attacks[attack_id] = {
+            'threads': attack_threads,
+            'start_time': time.time()
+        }
         
     except Exception as e:
         logging.error(f"Error starting attack threads: {str(e)}")
